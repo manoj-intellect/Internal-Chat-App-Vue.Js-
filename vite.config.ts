@@ -12,9 +12,12 @@ import { fileURLToPath, URL } from 'node:url'
  * Production, same origin (default): `npm run build` emits into
  * ../backend/public/spa, served by Laravel/Apache from the API's origin.
  *
- * Production, split (e.g. Vercel + Cloudways): when VITE_API_URL is set the
- * build is standalone: base "/", output "dist/", and the Firebase service
- * worker is copied to the site root (it must be same-origin with the SPA).
+ * Production on Vercel (or whenever VITE_API_URL is set): standalone build -
+ * base "/", output "dist/", Firebase service worker copied to the site root.
+ *   - VITE_API_URL unset ("proxy mode", default on Vercel): the SPA calls
+ *     /api on its own origin and vercel.json rewrites forward to Laravel.
+ *   - VITE_API_URL set ("direct mode"): the SPA calls that origin directly;
+ *     requires both hosts on one parent domain + CORS (see docs).
  */
 
 const SERVICE_WORKER = fileURLToPath(new URL('../backend/public/firebase-messaging-sw.js', import.meta.url))
@@ -33,7 +36,10 @@ function copyServiceWorker(): Plugin {
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backend = env.VITE_BACKEND_URL || 'http://localhost:8000'
-  const standalone = command === 'build' && !!env.VITE_API_URL
+  // Vercel always gets the standalone output in dist/. With VITE_API_URL unset
+  // the SPA calls the API on its own origin and vercel.json rewrites proxy
+  // those paths to Laravel ("proxy mode", works with any backend hostname).
+  const standalone = command === 'build' && (!!env.VITE_API_URL || !!process.env.VERCEL)
   const proxied = { target: backend, changeOrigin: false, xfwd: true }
 
   return {
