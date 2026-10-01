@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 /*
@@ -20,15 +20,21 @@ import { fileURLToPath, URL } from 'node:url'
  *     requires both hosts on one parent domain + CORS (see docs).
  */
 
-const SERVICE_WORKER = fileURLToPath(new URL('../backend/public/firebase-messaging-sw.js', import.meta.url))
+const BACKEND_SW = fileURLToPath(new URL('../backend/public/firebase-messaging-sw.js', import.meta.url))
+// Vercel builds only the frontend/ directory, so ../backend is absent there; keep a mirror here.
+const FRONTEND_SW = fileURLToPath(new URL('./firebase-messaging-sw.js', import.meta.url))
 
-/** Single source of truth for the SW lives in backend/public; copy it for standalone builds. */
+/** Copy the SW for standalone builds. backend/public is canonical; the frontend mirror must match it. */
 function copyServiceWorker(): Plugin {
   return {
     name: 'copy-firebase-service-worker',
     apply: 'build',
     generateBundle() {
-      this.emitFile({ type: 'asset', fileName: 'firebase-messaging-sw.js', source: readFileSync(SERVICE_WORKER, 'utf8') })
+      const mirror = readFileSync(FRONTEND_SW, 'utf8')
+      if (existsSync(BACKEND_SW) && readFileSync(BACKEND_SW, 'utf8').replace(/\r\n/g, '\n') !== mirror.replace(/\r\n/g, '\n')) {
+        this.error('frontend/firebase-messaging-sw.js is out of sync with backend/public/firebase-messaging-sw.js - copy it over.')
+      }
+      this.emitFile({ type: 'asset', fileName: 'firebase-messaging-sw.js', source: mirror })
     },
   }
 }
